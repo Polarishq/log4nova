@@ -1,0 +1,46 @@
+# Various scratch files
+tmp/*
+!tmp/DO_NOT_DELETE
+*.DS_Store
+*.bak
+
+# Binaries
+bin
+
+# Coverage files
+.coverage
+coverage.out
+*coverprofile*
+coverage.xml
+htmlcov
+
+# test results
+test-result.xml
+
+# Project files
+.idea
+*.iml
+.vscode*
+venv
+
+# Secrets
+*.aes
+*secret*
+
+# Generated files
+cover.html
+build
+dist
+
+# Python stuff
+*egg-info
+.egg*
+.cache
+*.pyc
+
+# Dependencies
+node_modules
+package-lock.json
+
+# Debug files
+debug
