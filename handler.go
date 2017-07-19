@@ -1,17 +1,12 @@
 package log4nova
 
 import (
-"net/http"
-    "time"
-    "github.com/aws/aws-sdk-go/service/kinesis"
-    "github.com/aws/aws-sdk-go/aws/session"
-    "encoding/json"
+    "net/http"
 )
 
 // Stats data structure
 type NovaLogger struct {
     handler             http.Handler
-    svc                 *kinesis.Kinesis
     captureResponseBody bool
     streamName          string
 }
@@ -25,22 +20,16 @@ type loggingResponseWriter struct {
 }
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
-func NewNovaHandler(handler http.Handler, captureResponseBody bool, streamName string) *NovaLogger {
-    sess := session.Must(session.NewSession())
-    svc := kinesis.New(sess)
-    return &NovaLogger{handler, svc, captureResponseBody, streamName}
+func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger {
+    return &NovaLogger{}
 }
 
 func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    start := time.Now()
+    //start := time.Now()
     lwr := &loggingResponseWriter{w: w, captureBody: nl.captureResponseBody}
     nl.handler.ServeHTTP(lwr, r)
-    end := time.Now()
-    key := r.RequestURI
-    _, err := nl.sendToKinesis(start, end, key, lwr)
-    if err != nil {
-        panic(err)
-    }
+    //end := time.Now()
+    //key := r.RequestURI
 }
 
 func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
@@ -58,18 +47,4 @@ func (lw *loggingResponseWriter) WriteHeader(code int) {
 
 func (lw *loggingResponseWriter) Header() http.Header {
     return lw.w.Header()
-}
-
-func (nl *NovaLogger) sendToKinesis(start time.Time, end time.Time, partitionKey string, writer *loggingResponseWriter) (*kinesis.PutRecordOutput, error) {
-    jsonBytes, err := json.Marshal(writer)
-    if err != nil {
-        return nil, err
-    }
-
-    input := &kinesis.PutRecordInput{
-        StreamName: &nl.streamName,
-        PartitionKey: &partitionKey,
-        Data: jsonBytes,
-    }
-    return nl.svc.PutRecord(input)
 }
