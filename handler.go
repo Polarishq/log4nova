@@ -16,6 +16,8 @@ import (
     "bytes"
     "bufio"
     "github.com/x-cray/logrus-prefixed-formatter"
+    "os"
+    "errors"
 )
 
 // Stats data structure
@@ -25,7 +27,10 @@ type NovaLogger struct {
     readLock            sync.Mutex
     writeLock           sync.Mutex
     client              events.ClientInterface
-    flushInterval       int
+    sendInterval        int
+    clientID            string
+    clientSecret        string
+    host                string
 }
 
 type loggingResponseWriter struct {
@@ -43,11 +48,19 @@ type novaLogFormat struct {
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
 func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger {
+    clientID := os.Getenv("NOVA_CLIENT_ID")
+    clientSecret := os.Getenv("NOVA_CLIENT_SECRET")
+    if clientID == "" || clientSecret == "" {
+        panic(errors.New("Client ID or Client Secret not set properly on env"))
+    }
+
     return &NovaLogger{
         readLock:   sync.Mutex{},
         writeLock:  sync.Mutex{},
-        client:     client.New(rtclient.New("", "", []string{}), strfmt.Default).Events,
-        flushInterval: 1000,
+        client:     client.New(rtclient.New(client.DefaultHost, client.DefaultBasePath, client.DefaultSchemes), strfmt.Default).Events,
+        sendInterval: 1000,
+        clientID: clientID,
+        clientSecret: clientSecret,
     }
 }
 
@@ -72,7 +85,7 @@ func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
                 if !ok {
                     for {
                         if len(out) > 0 {
-                            time.Sleep(100 * time.Millisecond)
+                            time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
                         } else {
                             break
                         }
@@ -81,8 +94,8 @@ func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
                 } else {
                     nl.readLock.Lock()
                     event := models.Event{
-                        //Entity: i.entity,
-                        //Source: i.source,
+                        Entity: "log4nova",
+                        Source: nl.host,
                         Event:  map[string]*string{"raw": &log},
                     }
                     out <- &event
@@ -120,95 +133,9 @@ func (nl *NovaLogger) flushFromOutputChannel(out chan *models.Event) error {
                     nl.writeLock.Unlock()
                 }
         }
-        time.Sleep(time.Duration(nl.flushInterval) * time.Millisecond)
+        time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
     }
 }
-
-
-//func (i *Input) Send(r io.Reader) {
-//    mutex := sync.Mutex{}
-//
-//    events := inputModels.Events{}
-//    log.Debugf("Starting scanner loop")
-//
-//    ch := make(chan string)
-//
-//    // Read from stdin, send all lines to a channel
-//    go func(ch chan string) {
-//        scanner := bufio.NewScanner(r)
-//        for scanner.Scan() {
-//            line := scanner.Text()
-//            // log.Debugf("line: %s", line)
-//            ch <- line
-//        }
-//        if err := scanner.Err(); err != nil {
-//            log.WithError(err).Errorf("Error received from scanner")
-//        }
-//        close(ch)
-//        return
-//    }(ch)
-//
-//    // Read events slice, flush to Events endpoint
-//    go func() {
-//        for {
-//            if len(events) > 0 {
-//                mutex.Lock()
-//                var ctx context.Context
-//                var cancel context.CancelFunc
-//                if i.ctx == nil {
-//                    ctx, cancel = context.WithTimeout(context.Background(), 5000*time.Millisecond)
-//                    defer cancel()
-//                } else {
-//                    ctx = i.ctx
-//                }
-//                params := &inputClientEvents.EventsParams{
-//                    Events:  events,
-//                    Input:   &i.input,
-//                    Context: ctx,
-//                }
-//                eok, err := i.client.Events(params, i.creds.ClientAuth)
-//                if eok != nil {
-//                    log.Infof("Bytes: %d Events: %d", eok.Payload.Bytes, eok.Payload.Count)
-//                }
-//                if err != nil {
-//                    log.Errorf("Error received from Events: %s", err)
-//                }
-//                events = inputModels.Events{}
-//                mutex.Unlock()
-//            }
-//            time.Sleep(time.Duration(i.flushInterval) * time.Millisecond)
-//        }
-//    }()
-//
-//    // Read from channel, add to events Slice
-//readloop:
-//    for {
-//        select {
-//        case line, ok := <-ch:
-//            if !ok {
-//                for {
-//                    if len(events) > 0 {
-//                        log.Debugf("Waiting for events queue to empty")
-//                        time.Sleep(100 * time.Millisecond)
-//                    } else {
-//                        break
-//                    }
-//                }
-//                break readloop
-//            } else {
-//                mutex.Lock()
-//                // log.Debugf("line: %s", line)
-//                event := inputModels.Event{
-//                    Entity: i.entity,
-//                    Source: i.source,
-//                    Event:  map[string]string{"raw": line},
-//                }
-//                events = append(events, &event)
-//                mutex.Unlock()
-//            }
-//        }
-//    }
-//}
 
 func stringify(r *http.Request) string {
     dump, _ := httputil.DumpRequest(r, true)
@@ -216,6 +143,7 @@ func stringify(r *http.Request) string {
 }
 
 func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    nl.host = r.Host
     // create logging
     buf := new(bytes.Buffer)
     logger.SetOutput(buf)
@@ -227,7 +155,6 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         "request": stringify(r),
     }).Infof("Logging Request")
 
-    //logger.Infof("LoggingHandler: request: %+v string_request %+v", r, stringify(r))
     lwr := loggingResponseWriter{w: w, captureBody: nl.captureResponseBody}
     nl.handler.ServeHTTP(&lwr, r)
     endTime := time.Now()
@@ -239,9 +166,6 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         "response_end": endTime,
         "response_time": endTime.Sub(startTime),
     }).Infof("Logging Response")
-
-    //Debugf("LoggingHandler: response code=%d header='%v' string_body='%+v' time=%v",
-    //    lwr.code, lwr.headers, string(lwr.data), endTime.Sub(startTime))
 
     // Begin the output process
     in := make(chan string)
