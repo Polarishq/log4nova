@@ -183,6 +183,12 @@
 			"revisionTime": "2017-05-23T03:00:23Z"
 		},
 		{
+			"checksumSHA1": "zmC8/3V4ls53DJlNTKDZwPSC/dA=",
+			"path": "github.com/satori/go.uuid",
+			"revision": "5bf94b69c6b68ee1b541973bb8e1144db23a194b",
+			"revisionTime": "2017-03-21T23:07:31Z"
+		},
+		{
 			"checksumSHA1": "i1Ziv0l+Mg4+QepkJXHyLU2tGqY=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "00386b3fbd637582f90cb17482dc3087646c0ac2",

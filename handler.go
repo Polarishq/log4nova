@@ -18,14 +18,16 @@ import (
     "github.com/x-cray/logrus-prefixed-formatter"
     "os"
     "errors"
+    "fmt"
+    "github.com/satori/go.uuid"
 )
 
 // Stats data structure
 type NovaLogger struct {
     handler             http.Handler
     captureResponseBody bool
-    readLock            sync.Mutex
-    writeLock           sync.Mutex
+    inLock              sync.Mutex
+    outLock             sync.Mutex
     client              events.ClientInterface
     sendInterval        int
     clientID            string
@@ -53,14 +55,23 @@ func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger 
     if clientID == "" || clientSecret == "" {
         panic(errors.New("Client ID or Client Secret not set properly on env"))
     }
+    transCfg := client.DefaultTransportConfig()
+    auth := rtclient.BasicAuth(clientID, clientSecret)
+    httpCl := &http.Client{}
+    transportWithClient := rtclient.NewWithClient("api-integ.logface.io", client.DefaultBasePath, transCfg.Schemes, httpCl)
+    transportWithClient.Transport = httpCl.Transport
+
+    transportWithClient.DefaultAuthentication = auth
 
     return &NovaLogger{
-        readLock:   sync.Mutex{},
-        writeLock:  sync.Mutex{},
-        client:     client.New(rtclient.New(client.DefaultHost, client.DefaultBasePath, client.DefaultSchemes), strfmt.Default).Events,
+        inLock:   sync.Mutex{},
+        outLock:  sync.Mutex{},
+        client:     client.New(transportWithClient, strfmt.Default).Events,
         sendInterval: 1000,
         clientID: clientID,
         clientSecret: clientSecret,
+        captureResponseBody: captureResponseBody,
+        handler: handler,
     }
 }
 
@@ -79,61 +90,80 @@ func (nl *NovaLogger) writeLogsToChannel(logs *bytes.Buffer, ch chan string) {
 func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
     //Format logs for splunk
     out := make(chan *models.Event)
+    go func() {
         for {
             select {
             case log, ok := <-in:
                 if !ok {
-                    for {
-                        if len(out) > 0 {
-                            time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
-                        } else {
-                            break
-                        }
-                    }
+                    //for {
+                    //    if len(out) > 0 {
+                    //        fmt.Println("Sleeping again")
+                    //        time.Sleep(time.Duration(nl.sendInterval) / 2 * time.Millisecond)
+                    //    } else {
+                    //        fmt.Println("Breaking out")
+                    //        break
+                    //    }
+                    //}
                     break
                 } else {
-                    nl.readLock.Lock()
+                    fmt.Println("Getting read lock")
+                    //nl.outLock.Lock()
                     event := models.Event{
                         Entity: "log4nova",
                         Source: nl.host,
                         Event:  map[string]*string{"raw": &log},
                     }
+                    fmt.Println("Pushed formatted log to channel")
                     out <- &event
-                    nl.readLock.Unlock()
+                    //nl.outLock.Unlock()
+                    fmt.Println("Released read lock")
                 }
             }
         }
+        fmt.Println("Closing out channel")
+        close(out)
+    }()
+
     return out
 }
 
 func (nl *NovaLogger) flushFromOutputChannel(out chan *models.Event) error {
+    fmt.Println("Flushing from output channel")
     for {
         select {
-            case event, ok := <- out:
-                if !ok {
-
-                } else {
-                    nl.writeLock.Lock()
-                    ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-                    defer cancel()
-                    params := &events.EventsParams{
-                        Events:  models.Events{event},
-                        Input:   &"input type here",
-                        Context: ctx,
-                    }
-                    auth := rtclient.BasicAuth("", "")
-                    _, err := nl.client.Events(params, auth)
-
-                    if err != nil {
-
+        case event, ok := <- out:
+            if !ok {
+                for {
+                    if len(out) > 0 {
+                        time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
                     } else {
-
+                        break
                     }
-
-                    nl.writeLock.Unlock()
                 }
+            } else {
+                fmt.Println("Getting write lock")
+                //nl.writeLock.Lock()
+                ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+                defer cancel()
+                params := &events.EventsParams{
+                    Events:  models.Events{event},
+                    Context: ctx,
+                }
+                fmt.Println("Sending events")
+                auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
+                _, err := nl.client.Events(params, auth)
+
+                if err != nil {
+                    fmt.Println(fmt.Errorf("Error sending to log-store: %v", err))
+                } else {
+
+                }
+
+                fmt.Println("Releasing write lock")
+                //nl.writeLock.Unlock()
+            }
         }
-        time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
+        //time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
     }
 }
 
@@ -158,7 +188,10 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     lwr := loggingResponseWriter{w: w, captureBody: nl.captureResponseBody}
     nl.handler.ServeHTTP(&lwr, r)
     endTime := time.Now()
+    uuid_evt := uuid.NewV1()
+    fmt.Println(uuid_evt)
     logger.WithFields(logger.Fields{
+        "log_id": uuid_evt,
         "response_code": lwr.code,
         "headers": lwr.headers,
         "body": string(lwr.data),
