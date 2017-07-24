@@ -15,7 +15,6 @@ import (
     "strings"
     "bytes"
     "bufio"
-    "github.com/x-cray/logrus-prefixed-formatter"
     "os"
     "errors"
     "fmt"
@@ -111,7 +110,9 @@ func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
                     event := models.Event{
                         Entity: "log4nova",
                         Source: nl.host,
-                        Event:  map[string]*string{"raw": &log},
+                        Event:  map[string]*string{
+                            "raw": &log,
+                        },
                     }
                     fmt.Println("Pushed formatted log to channel")
                     out <- &event
@@ -177,7 +178,7 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     // create logging
     buf := new(bytes.Buffer)
     logger.SetOutput(buf)
-    logger.SetFormatter(&prefixed.TextFormatter{TimestampFormat: "Jan 02 03:04:05.000"})
+    logger.SetFormatter(&logger.JSONFormatter{})
 
     // Get your logs
     startTime := time.Now()
