@@ -3,7 +3,6 @@ package log4nova
 import (
     "net/http"
     "github.com/Polarishq/bouncer/models"
-    "sync"
     "time"
     "context"
     logger "github.com/Sirupsen/logrus"
