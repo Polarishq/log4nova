@@ -19,14 +19,15 @@ import (
     "errors"
     "fmt"
     "github.com/satori/go.uuid"
+    "encoding/json"
+    "reflect"
+    "strconv"
 )
 
 // Stats data structure
 type NovaLogger struct {
     handler             http.Handler
     captureResponseBody bool
-    inLock              sync.Mutex
-    outLock             sync.Mutex
     client              events.ClientInterface
     sendInterval        int
     clientID            string
@@ -44,7 +45,15 @@ type loggingResponseWriter struct {
 
 
 type novaLogFormat struct {
-
+    Api             string  `json:"api,omitempty"`
+    StatusCode      string  `json:"status_code,omitempty"`
+    RequestURL      string  `json:"RequestURL,omitempty"`
+    RequestMethod   string  `json:"RequestMethod,omitempty"`
+    UserAgent       string  `json:"UserAgent,omitempty"`
+    Time            string  `json:"time,omitempty"`
+    ResponseTime    string  `json:"response_time,omitempty"`
+    Entity          string  `json:"entity,omitempty"`
+    Source          string  `json:"source,omitempty"`
 }
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
@@ -63,8 +72,6 @@ func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger 
     transportWithClient.DefaultAuthentication = auth
 
     return &NovaLogger{
-        inLock:   sync.Mutex{},
-        outLock:  sync.Mutex{},
         client:     client.New(transportWithClient, strfmt.Default).Events,
         sendInterval: 1000,
         clientID: clientID,
@@ -86,7 +93,7 @@ func (nl *NovaLogger) writeLogsToChannel(logs *bytes.Buffer, ch chan string) {
     return
 }
 
-func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
+func (nl *NovaLogger) formatLogs(in <-chan string) <-chan *models.Event {
     //Format logs for splunk
     out := make(chan *models.Event)
     go func() {
@@ -105,19 +112,33 @@ func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
                     //}
                     break
                 } else {
-                    fmt.Println("Getting read lock")
-                    //nl.outLock.Lock()
+                    novaLog := novaLogFormat{}
+                    err := json.Unmarshal([]byte(log), &novaLog)
+                    if err != nil {
+                        panic(err)
+                    }
                     event := models.Event{
-                        Entity: "log4nova",
-                        Source: nl.host,
                         Event:  map[string]*string{
-                            "raw": &log,
+                            //"raw": &log,
                         },
                     }
+
+                    // Append nova log to map
+                    nlValue := reflect.ValueOf(&novaLog).Elem()
+                    typeOfnl := nlValue.Type()
+                    for i := 0; i < nlValue.NumField(); i++ {
+                        field := nlValue.Field(i)
+                        // Ignore fields that don't have the same type as a string
+                        if field.Type() != reflect.TypeOf("") {
+                            continue
+                        }
+                        nlValue := field.Interface().(string)
+                        nlType := typeOfnl.Field(i).Name
+                        event.Event[nlType] = &nlValue
+                    }
+
                     fmt.Println("Pushed formatted log to channel")
                     out <- &event
-                    //nl.outLock.Unlock()
-                    fmt.Println("Released read lock")
                 }
             }
         }
@@ -128,22 +149,22 @@ func (nl *NovaLogger) formatLogs(in chan string) chan *models.Event {
     return out
 }
 
-func (nl *NovaLogger) flushFromOutputChannel(out chan *models.Event) error {
+func (nl *NovaLogger) flushFromOutputChannel(out <-chan *models.Event) error {
+    time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
     fmt.Println("Flushing from output channel")
     for {
         select {
         case event, ok := <- out:
             if !ok {
-                for {
-                    if len(out) > 0 {
-                        time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
-                    } else {
-                        break
-                    }
-                }
+                //for {
+                //    if len(out) > 0 {
+                //        time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
+                //    } else {
+                //        break
+                //    }
+                //}
+                break
             } else {
-                fmt.Println("Getting write lock")
-                //nl.writeLock.Lock()
                 ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
                 defer cancel()
                 params := &events.EventsParams{
@@ -159,12 +180,8 @@ func (nl *NovaLogger) flushFromOutputChannel(out chan *models.Event) error {
                 } else {
 
                 }
-
-                fmt.Println("Releasing write lock")
-                //nl.writeLock.Unlock()
             }
         }
-        //time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
     }
 }
 
@@ -182,9 +199,9 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
     // Get your logs
     startTime := time.Now()
-    logger.WithFields(logger.Fields{
-        "request": stringify(r),
-    }).Infof("Logging Request")
+    //logger.WithFields(logger.Fields{
+    //    "request": stringify(r),
+    //}).Infof("Logging Request")
 
     lwr := loggingResponseWriter{w: w, captureBody: nl.captureResponseBody}
     nl.handler.ServeHTTP(&lwr, r)
@@ -192,13 +209,18 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     uuid_evt := uuid.NewV1()
     fmt.Println(uuid_evt)
     logger.WithFields(logger.Fields{
+        "api": r.URL.Path,
+        "status_code": strconv.Itoa(lwr.code),
+        "RequestURL" : r.RequestURI,
+        "RequestMethod": r.Method,
+        "UserAgent": r.UserAgent(),
+        "time": startTime,
+        "entity": nl.host,
+        "source": "rest_access",
         "log_id": uuid_evt,
-        "response_code": lwr.code,
-        "headers": lwr.headers,
-        "body": string(lwr.data),
-        "response_start": startTime,
-        "response_end": endTime,
-        "response_time": endTime.Sub(startTime),
+        //"headers": lwr.headers,
+        //"body": string(lwr.data),
+        "response_time": endTime.Sub(startTime).String(),
     }).Infof("Logging Response")
 
     // Begin the output process
