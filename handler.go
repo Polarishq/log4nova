@@ -5,7 +5,7 @@ import (
     "github.com/Polarishq/bouncer/models"
     "time"
     "context"
-    logger "github.com/Sirupsen/logrus"
+    "github.com/Sirupsen/logrus"
     "github.com/Polarishq/bouncer/client/events"
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/Polarishq/bouncer/client"
@@ -26,7 +26,7 @@ import (
 // Stats data structure
 type NovaLogger struct {
     handler             http.Handler
-    captureResponseBody bool
+    customLogger        *logrus.Logger
     client              events.ClientInterface
     sendInterval        int
     clientID            string
@@ -56,11 +56,11 @@ type novaLogFormat struct {
 }
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
-func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger {
+func NewNovaHandler(handler http.Handler, customLogger *logrus.Logger) *NovaLogger {
     clientID := os.Getenv("NOVA_CLIENT_ID")
     clientSecret := os.Getenv("NOVA_CLIENT_SECRET")
     if clientID == "" || clientSecret == "" {
-        panic(errors.New("Client ID or Client Secret not set properly on env"))
+        panic(errors.New("NOVA_CLIENT_ID or NOVA_CLIENT_SECRET not set properly on env"))
     }
     transCfg := client.DefaultTransportConfig()
     auth := rtclient.BasicAuth(clientID, clientSecret)
@@ -75,7 +75,7 @@ func NewNovaHandler(handler http.Handler, captureResponseBody bool) *NovaLogger 
         sendInterval: 1000,
         clientID: clientID,
         clientSecret: clientSecret,
-        captureResponseBody: captureResponseBody,
+        customLogger: customLogger,
         handler: handler,
     }
 }
@@ -127,7 +127,7 @@ func (nl *NovaLogger) formatLogs(in <-chan string) <-chan *models.Event {
                     typeOfnl := nlValue.Type()
                     for i := 0; i < nlValue.NumField(); i++ {
                         field := nlValue.Field(i)
-                        // Ignore fields that don't have the same type as a string
+                        //Filter out non string fields
                         if field.Type() != reflect.TypeOf("") {
                             continue
                         }
@@ -149,7 +149,6 @@ func (nl *NovaLogger) formatLogs(in <-chan string) <-chan *models.Event {
 }
 
 func (nl *NovaLogger) flushFromOutputChannel(out <-chan *models.Event) error {
-    time.Sleep(time.Duration(nl.sendInterval) * time.Millisecond)
     fmt.Println("Flushing from output channel")
     for {
         select {
@@ -179,6 +178,7 @@ func (nl *NovaLogger) flushFromOutputChannel(out <-chan *models.Event) error {
                 } else {
 
                 }
+
             }
         }
     }
@@ -190,24 +190,28 @@ func stringify(r *http.Request) string {
 }
 
 func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    var logger *logrus.Logger
+    if nl.customLogger != nil {
+        logger = nl.customLogger
+    } else {
+        logger = logrus.New()
+    }
+
     nl.host = r.Host
     // create logging
     buf := new(bytes.Buffer)
-    logger.SetOutput(buf)
-    logger.SetFormatter(&logger.JSONFormatter{})
+    logger.Out = buf
+    logger.Formatter = &logrus.JSONFormatter{}
 
     // Get your logs
     startTime := time.Now()
-    //logger.WithFields(logger.Fields{
-    //    "request": stringify(r),
-    //}).Infof("Logging Request")
 
-    lwr := loggingResponseWriter{w: w, captureBody: nl.captureResponseBody}
+    lwr := loggingResponseWriter{w: w, captureBody: false}
     nl.handler.ServeHTTP(&lwr, r)
     endTime := time.Now()
     uuid_evt := uuid.NewV1()
     fmt.Println(uuid_evt)
-    logger.WithFields(logger.Fields{
+    logger.WithFields(logrus.Fields{
         "api": r.URL.Path,
         "status_code": strconv.Itoa(lwr.code),
         "RequestURL" : r.RequestURI,
@@ -219,6 +223,7 @@ func (nl *NovaLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         "log_id": uuid_evt,
         //"headers": lwr.headers,
         //"body": string(lwr.data),
+        //"request": stringify(r),
         "response_time": endTime.Sub(startTime).String(),
     }).Infof("Logging Response")
 
