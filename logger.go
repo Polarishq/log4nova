@@ -10,6 +10,7 @@ import (
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/Polarishq/bouncer/client"
     "github.com/go-openapi/strfmt"
+    "github.com/cenkalti/backoff"
     "errors"
     "fmt"
     "encoding/json"
@@ -75,7 +76,7 @@ func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Log
     }
 }
 
-//Start kicks off the logger to feed data off to splunk as available
+//Start kicks off the logger to feed data off to log-input as available
 func (nl *NovaLogger) Start() {
     nl.logrusLogger.Out = nl
     nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
@@ -125,8 +126,6 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
                     event.Event[k] = &stringVal
                 }
 
-                fmt.Println("Pushed formatted log to channel")
-
                 //Block and insert a new event
                 lock.Lock()
                 out = append(out, &event)
@@ -141,7 +140,8 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
 func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mutex) {
     for {
         time.Sleep(time.Duration(nl.SendInterval) * time.Millisecond)
-        fmt.Println("Waking from sleep to flush logs")
+        retryBackoff := backoff.NewExponentialBackOff()
+        auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
 
         //If we have logs, spawn a new thread to flush logs out
         if len(*out) > 0 {
@@ -161,11 +161,15 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                         Events:  models.Events{event},
                         Context: ctx,
                     }
-                    fmt.Println("Sending events")
-                    auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
-                    _, err := nl.client.Events(params, auth)
 
-                    //Should this panic? how to surface this
+                    //Setup retry func
+                    operation := func() error {
+                        _, err := nl.client.Events(params, auth)
+                        return err
+                    }
+
+                    //If retry with backoff fails, then send the error to stdout
+                    err := backoff.Retry(operation, retryBackoff)
                     if err != nil {
                         fmt.Printf("Error sending to log-store: %v\n", err)
                     }

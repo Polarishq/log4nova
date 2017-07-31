@@ -69,6 +69,12 @@
 			"revisionTime": "2017-05-29T11:00:29Z"
 		},
 		{
+			"checksumSHA1": "hFFFYFqtS10h1arNtLUo2MmkYZE=",
+			"path": "github.com/cenkalti/backoff",
+			"revision": "61153c768f31ee5f130071d08fc82b85208528de",
+			"revisionTime": "2017-07-11T19:02:43Z"
+		},
+		{
 			"checksumSHA1": "ZKKdymZaeuKSiSKOZnMD9r3+T3Y=",
 			"path": "github.com/go-openapi/analysis",
 			"revision": "0473cb67199f68b8b7d90e641afd9e79ad36b851",
