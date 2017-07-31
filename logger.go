@@ -5,18 +5,15 @@ import (
     "github.com/Polarishq/bouncer/models"
     "time"
     "context"
-    "github.com/Sirupsen/logrus"
+    "github.com/sirupsen/logrus"
     "github.com/Polarishq/bouncer/client/events"
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/Polarishq/bouncer/client"
     "github.com/go-openapi/strfmt"
-    "bytes"
-    "bufio"
     "errors"
     "fmt"
     "encoding/json"
     "sync"
-    "io"
 )
 
 // Stats data structure
@@ -28,73 +25,66 @@ type NovaLogger struct {
     clientSecret        string
     host                string
     inStream            chan string
-    writeLock           sync.Mutex
-}
-
-type Nova struct {}
-
-
-type novaLogFormat struct {
-    Api             string  `json:"api,omitempty"`
-    StatusCode      string  `json:"status_code,omitempty"`
-    RequestURL      string  `json:"RequestURL,omitempty"`
-    RequestMethod   string  `json:"RequestMethod,omitempty"`
-    UserAgent       string  `json:"UserAgent,omitempty"`
-    Time            string  `json:"time,omitempty"`
-    ResponseTime    string  `json:"response_time,omitempty"`
-    Entity          string  `json:"entity,omitempty"`
-    Source          string  `json:"source,omitempty"`
 }
 
 //NewNovaLogger creates a new instance of the NovaLogger
-func NewNovaLogger(customLogger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
+func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
     // Configure default values
     var novaHost string
     var logger *logrus.Logger
     if clientID == "" || clientSecret == "" {
-        panic(errors.New("NOVA_CLIENT_ID or NOVA_CLIENT_SECRET not set properly on env"))
+        panic(errors.New("Nova client ID or client secret not set properly"))
     }
     if host == "" {
-
         novaHost = client.DefaultHost
     } else {
         novaHost = host
     }
+
+    //Should be used mainly just for test
     if customLogger != nil {
         logger = customLogger
     } else {
         logger = logrus.New()
     }
 
-    // Create log-input client
-    transCfg := client.DefaultTransportConfig()
-    auth := rtclient.BasicAuth(clientID, clientSecret)
-    httpCl := &http.Client{}
-    transportWithClient := rtclient.NewWithClient(novaHost, client.DefaultBasePath, transCfg.Schemes, httpCl)
-    transportWithClient.Transport = httpCl.Transport
-    transportWithClient.DefaultAuthentication = auth
+    // Set up events client
+    var eventsClient events.ClientInterface
+    if customClient != nil {
+        eventsClient = customClient
+    } else {
+        // Create log-input client
+        transCfg := client.DefaultTransportConfig()
+        auth := rtclient.BasicAuth(clientID, clientSecret)
+        httpCl := &http.Client{}
+        transportWithClient := rtclient.NewWithClient(novaHost, client.DefaultBasePath, transCfg.Schemes, httpCl)
+        transportWithClient.Transport = httpCl.Transport
+        transportWithClient.DefaultAuthentication = auth
+        eventsClient = client.New(transportWithClient, strfmt.Default).Events
+    }
+
 
     // Return new logger
     return &NovaLogger{
-        client:     client.New(transportWithClient, strfmt.Default).Events,
-        SendInterval: 1000,
+        client:     eventsClient,
+        SendInterval: 2000,
         clientID: clientID,
         clientSecret: clientSecret,
         logrusLogger: logger,
         inStream: make(chan string),
-        writeLock: sync.Mutex{},
     }
 }
 
-
-func (nl *NovaLogger) Start(){
+//Start kicks off the logger to feed data off to splunk as available
+func (nl *NovaLogger) Start() {
     nl.logrusLogger.Out = nl
-    //nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
-    // Begin the output process
-    out := nl.formatLogs(nl.inStream)
-    go nl.flushFromOutputChannel(out)
+    nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
+    // Begin the formatting process
+    go nl.flushFromOutputChannel(nl.formatLogs(nl.inStream))
+    return
 }
 
+//Write sends all writes to the input channel
 func (nl *NovaLogger) Write(p []byte) (n int, err error) {
     go nl.writeLogsToChannel(string(p))
     fmt.Println(string(p))
@@ -104,109 +94,87 @@ func (nl *NovaLogger) Write(p []byte) (n int, err error) {
 //Send logs to the out channel
 func (nl *NovaLogger) writeLogsToChannel(log string) {
     nl.inStream <- log
-    //close(ch)
     return
 }
 
 //Format logs from strings to the out channel event format
-func (nl *NovaLogger) formatLogs(in <-chan string) <-chan *models.Event {
-    //Format logs for splunk
-    out := make(chan *models.Event)
+func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex) {
+    // Create the output channel and the lock
+    out := make([]*models.Event,0)
+    lock := sync.Mutex{}
+
+    //Spawn new thread to wait for data on the input channel
     go func() {
         for {
             select {
-            case log, ok := <-in:
-                if !ok {
-                    //for {
-                    //    if len(out) > 0 {
-                    //        fmt.Println("Sleeping again")
-                    //        time.Sleep(time.Duration(nl.sendInterval) / 2 * time.Millisecond)
-                    //    } else {
-                    //        fmt.Println("Breaking out")
-                    //        break
-                    //    }
-                    //}
-                    break
-                } else {
-                    novaLog := novaLogFormat{}
-                    err := json.Unmarshal([]byte(log), &novaLog)
-                    if err != nil {
-                        panic(err)
-                    }
-                    event := models.Event{
-                        Event:  map[string]*string{
-                            //"raw": &log,
-                        },
-                    }
-
-                    // Append nova log to map
-                    //nlValue := reflect.ValueOf(&novaLog).Elem()
-                    //typeOfnl := nlValue.Type()
-                    //for i := 0; i < nlValue.NumField(); i++ {
-                    //    field := nlValue.Field(i)
-                    //    //Filter out non string fields
-                    //    if field.Type() != reflect.TypeOf("") {
-                    //        continue
-                    //    }
-                    //    nlValue := field.Interface().(string)
-                    //    nlType := typeOfnl.Field(i).Name
-                    //    event.Event[nlType] = &nlValue
-                    //}
-
-                    fmt.Println("Pushed formatted log to channel")
-                    logrus.Infoln("Pushed formatted log to channel")
-                    out <- &event
+            case log := <-in:
+                //Marshal the data out to iterate over and set on the event
+                logMap := make(map[string]interface{})
+                err := json.Unmarshal([]byte(log), &logMap)
+                if err != nil {
+                    panic(err)
                 }
+
+                event := models.Event{
+                    Event: map[string]*string{
+                        "raw": &log,
+                    },
+                }
+                for k, v := range logMap {
+                    stringVal := fmt.Sprintf("%s", v)
+                    event.Event[k] = &stringVal
+                }
+
+                fmt.Println("Pushed formatted log to channel")
+
+                //Block and insert a new event
+                lock.Lock()
+                out = append(out, &event)
+                lock.Unlock()
             }
         }
-        //fmt.Println("Closing out channel")
-        //logrus.Infoln("Closing out channel")
-        //close(out)
     }()
-
-    return out
+    return &out, lock
 }
 
 //Flush logs to the log-input endpoint
-func (nl *NovaLogger) flushFromOutputChannel(out <-chan *models.Event) error {
-    fmt.Println("Flushing from output channel")
-    logrus.Infoln("Flushing from output channel")
-    time.Sleep(time.Duration(nl.SendInterval)/2 * time.Millisecond)
+func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mutex) {
     for {
-        select {
-        case event, ok := <- out:
-            if !ok {
-                //for {
-                //    if len(out) > 0 {
-                //        time.Sleep(time.Duration(nl.sendInterval)/2 * time.Millisecond)
-                //    } else {
-                //        break
-                //    }
-                //}
-                break
-            } else {
-                ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-                defer cancel()
-                params := &events.EventsParams{
-                    Events:  models.Events{event},
-                    Context: ctx,
+        time.Sleep(time.Duration(nl.SendInterval) * time.Millisecond)
+        fmt.Println("Waking from sleep to flush logs")
+
+        //If we have logs, spawn a new thread to flush logs out
+        if len(*out) > 0 {
+            go func() {
+                // Make a copy of the array and block while doing so
+                lock.Lock()
+                tmp := make([]*models.Event, len(*out))
+                copy(tmp, *out)
+                *out = make([]*models.Event, 0)
+                lock.Unlock()
+
+                //Iterate over to push events into log-input
+                for _, event := range tmp {
+                    ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+                    defer cancel()
+                    params := &events.EventsParams{
+                        Events:  models.Events{event},
+                        Context: ctx,
+                    }
+                    fmt.Println("Sending events")
+                    auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
+                    _, err := nl.client.Events(params, auth)
+
+                    //Should this panic? how to surface this
+                    if err != nil {
+                        fmt.Printf("Error sending to log-store: %v\n", err)
+                    }
                 }
-                fmt.Println("Sending events")
-                logrus.Infoln("Sending events")
-                auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
-                _, err := nl.client.Events(params, auth)
-
-                if err != nil {
-                    logrus.Errorf("Error sending to log-store: %v\n", err)
-                } else {
-
-                }
-
-            }
+            }()
         }
     }
+    return
 }
-
 
 // Fields allows passing key value pairs to Logrus
 type Fields map[string]interface{}
@@ -272,20 +240,20 @@ func (nl *NovaLogger) Debug(v ...interface{}) {
 
 // SetDebug sets the log level to debug
 func (nl *NovaLogger) SetDebug() {
-    nl.logrusLogger.SetLevel(logrus.DebugLevel)
+    nl.logrusLogger.Level = logrus.DebugLevel
 }
 
 // SetDebug sets the log level to debug
 func (nl *NovaLogger) SetInfo() {
-    nl.logrusLogger.SetLevel(logrus.InfoLevel)
+    nl.logrusLogger.Level = logrus.InfoLevel
 }
 
 // SetWarn sets the log level to warn
 func (nl *NovaLogger) SetWarn() {
-    nl.logrusLogger.SetLevel(logrus.WarnLevel)
+    nl.logrusLogger.Level = logrus.WarnLevel
 }
 
 // SetError sets the log level to error
 func (nl *NovaLogger) SetError() {
-    nl.logrusLogger.SetLevel(logrus.ErrorLevel)
+    nl.logrusLogger.Level = logrus.ErrorLevel
 }
