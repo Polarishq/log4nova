@@ -78,6 +78,7 @@ func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Log
 
 //Start kicks off the logger to feed data off to log-input as available
 func (nl *NovaLogger) Start() {
+    //This configures the logger to call the logger's own writer function to send logs to log-input
     nl.logrusLogger.Out = nl
     nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
     // Begin the formatting process
