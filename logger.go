@@ -1,5 +1,10 @@
 package log4nova
 
+//TODO allow user to also tee to stdout
+//TODO import go-sdk instead of bouncer client
+//TODO roll into go-sdk and shared pieces
+//TODO add README for setup and MIT license
+//TODO don't checkin libraries
 import (
     "net/http"
     "github.com/Polarishq/bouncer/models"
@@ -17,6 +22,10 @@ import (
     "sync"
 )
 
+const (
+    MaxBufferSize = 400
+)
+
 // Stats data structure
 type NovaLogger struct {
     logrusLogger        *logrus.Logger
@@ -26,9 +35,11 @@ type NovaLogger struct {
     clientSecret        string
     host                string
     inStream            chan string
+    isRunning           bool
 }
 
 //NewNovaLogger creates a new instance of the NovaLogger
+//TODO Add new nova logger with host, with client interface, logger, etc
 func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
     // Configure default values
     var novaHost string
@@ -78,12 +89,24 @@ func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Log
 
 //Start kicks off the logger to feed data off to log-input as available
 func (nl *NovaLogger) Start() {
-    //This configures the logger to call the logger's own writer function to send logs to log-input
+    if nl.isRunning {
+        return
+    }
+
+    nl.isRunning = true
     nl.logrusLogger.Out = nl
     nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
     // Begin the formatting process
     go nl.flushFromOutputChannel(nl.formatLogs(nl.inStream))
     return
+}
+
+//TODO add stop function
+func (nl *NovaLogger) Stop() {
+    if !nl.isRunning {
+        return
+    }
+
 }
 
 //Write sends all writes to the input channel
@@ -140,6 +163,9 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
 //Flush logs to the log-input endpoint
 func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mutex) {
     for {
+        //TODO buffer needs an upper bound (~4000)
+        //TODO allow client the option to either block or drop events -> default to dropping events
+        //TODO add options later for buffer specifics
         time.Sleep(time.Duration(nl.SendInterval) * time.Millisecond)
         retryBackoff := backoff.NewExponentialBackOff()
         auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
@@ -155,6 +181,8 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                 lock.Unlock()
 
                 //Iterate over to push events into log-input
+                //TODO send in one request
+                //TODO remove internal statements like "log-input"
                 for _, event := range tmp {
                     ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
                     defer cancel()

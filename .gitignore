@@ -41,6 +41,8 @@ dist
 # Dependencies
 node_modules
 package-lock.json
+vendor
+!vendor.json
 
 # Debug files
 debug
