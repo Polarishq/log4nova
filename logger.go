@@ -179,7 +179,7 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                 ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
                 defer cancel()
                 params := &events.EventsParams{
-                    Events:  models.Events{events},
+                    Events:  models.Events(tmp),
                     Context: ctx,
                 }
 
@@ -195,7 +195,7 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                     fmt.Printf("Error sending to log-store: %v\n", err)
                     //Push events back onto the output array
                     lock.Lock()
-                    *out = append(*out, events)
+                    *out = append(*out, tmp...)
                     lock.Unlock()
                 }
             }()

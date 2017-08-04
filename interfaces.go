@@ -4,6 +4,7 @@ import "github.com/sirupsen/logrus"
 
 type INovaLogger interface {
     Start()
+    Stop()
     Write(p []byte) (n int, err error)
     WithField(key string, value interface{}) *logrus.Entry
     WithFields(fields Fields) *logrus.Entry

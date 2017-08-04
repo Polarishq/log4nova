@@ -3,46 +3,46 @@
 	"ignore": "test",
 	"package": [
 		{
-			"checksumSHA1": "3z8xpFyOfAxvi1MqkSG0pfBWEWo=",
+			"checksumSHA1": "+UqeTRuYhI8vblWfUGCpfCWcovI=",
 			"path": "github.com/Polarishq/logface-sdk-go/client",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "TN5TepOFr97h/k33v2qFEMqxh88=",
+			"checksumSHA1": "364KRI9j2c7EzCxuFmw6lfuOEI8=",
 			"path": "github.com/Polarishq/logface-sdk-go/client/applications",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "36vC+/x8UK7id0FS1FqJDSWyawE=",
+			"checksumSHA1": "t0mwkN/49aAEKuzUviAqEiTB1LI=",
 			"path": "github.com/Polarishq/logface-sdk-go/client/context",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "B8wg1xv4l2p2VvXBOwn1GkHxlnI=",
+			"checksumSHA1": "ff7QgWQvRVOXxRVeiyq0TZOnr/0=",
 			"path": "github.com/Polarishq/logface-sdk-go/client/events",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "QMER6UyrIkQb7PrPfGT41F457Kk=",
+			"checksumSHA1": "hPQnp+aK61xbL/uGbFQz2XtFRLo=",
 			"path": "github.com/Polarishq/logface-sdk-go/client/identity",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "L4DAJPZij0vVa+dJLJNdc27t7xY=",
+			"checksumSHA1": "SCLXXulNpRn5qYGeOzCo1cUSsuk=",
 			"path": "github.com/Polarishq/logface-sdk-go/client/search",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
-			"checksumSHA1": "Ca1uVCpzXNoSrVg9bdh849GCGHg=",
+			"checksumSHA1": "lHq//yAxaKogjgKJ0X9dd4SO3sA=",
 			"path": "github.com/Polarishq/logface-sdk-go/models",
-			"revision": "a99285b35c5242a0521a5d433c424e782ef39102",
-			"revisionTime": "2017-08-04T00:30:30Z"
+			"revision": "e8e793319a0c039fb79f85a656b42abd01c8fe57",
+			"revisionTime": "2017-08-04T18:02:20Z"
 		},
 		{
 			"checksumSHA1": "NX4v3cbkXAJxFlrncqT9yEUBuoA=",

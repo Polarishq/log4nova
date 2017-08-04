@@ -7,11 +7,11 @@ import (
     "github.com/Polarishq/log4nova"
     "net/http/httptest"
     "github.com/sirupsen/logrus"
-    "github.com/Polarishq/log4nova/mocks/bouncer/client/events"
+    "github.com/Polarishq/log4nova/mocks/logface-sdk-go/client/events"
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/sirupsen/logrus/hooks/test"
-    "github.com/Polarishq/bouncer/client/events"
-    "github.com/Polarishq/bouncer/models"
+    "github.com/Polarishq/logface-sdk-go/client/events"
+    "github.com/Polarishq/logface-sdk-go/models"
 )
 
 
@@ -43,7 +43,7 @@ var _ = Describe("Log4Nova Logger", func() {
         testData := "test data"
         logger.Write([]byte(testData))
         testEventParams := events.NewEventsParams()
-        testEvent := models.Event{ Event: map[string]*string{"raw": &testData}}
+        testEvent := models.Event{ Event: map[string]string{"raw": testData}}
         testEventParams.Events = models.Events{&testEvent}
         auth := rtclient.BasicAuth(clientID, clientSecret)
 
