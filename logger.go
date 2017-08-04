@@ -2,19 +2,24 @@ package log4nova
 
 import (
     "net/http"
-    "github.com/Polarishq/bouncer/models"
     "time"
     "context"
     "github.com/sirupsen/logrus"
-    "github.com/Polarishq/bouncer/client/events"
+    "github.com/Polarishq/logface-sdk-go/client/events"
     rtclient "github.com/go-openapi/runtime/client"
-    "github.com/Polarishq/bouncer/client"
     "github.com/go-openapi/strfmt"
     "github.com/cenkalti/backoff"
     "errors"
     "fmt"
     "encoding/json"
     "sync"
+    "github.com/Polarishq/logface-sdk-go/client"
+    "github.com/Polarishq/logface-sdk-go/models"
+)
+
+const (
+    MaxBufferSize = 400
+    DefaultFlushInterval = 2000
 )
 
 // Stats data structure
@@ -26,49 +31,38 @@ type NovaLogger struct {
     clientSecret        string
     host                string
     inStream            chan string
+    isRunning           bool
+    isStopped           bool
+    SendToStdOut        bool
 }
 
-//NewNovaLogger creates a new instance of the NovaLogger
-func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
-    // Configure default values
-    var novaHost string
-    var logger *logrus.Logger
+//NewNovaLoggerWithHost creates a Nova Logging instance with the default host
+func NewNovaLoggerWithHost(clientID, clientSecret string) *NovaLogger {
     if clientID == "" || clientSecret == "" {
         panic(errors.New("Nova client ID or client secret not set properly"))
     }
-    if host == "" {
-        novaHost = client.DefaultHost
-    } else {
-        novaHost = host
-    }
 
-    //Should be used mainly just for test
-    if customLogger != nil {
-        logger = customLogger
-    } else {
-        logger = logrus.New()
-    }
+    novaHost := client.DefaultHost
+    logger := logrus.New()
+    transCfg := client.DefaultTransportConfig()
+    auth := rtclient.BasicAuth(clientID, clientSecret)
+    httpCl := &http.Client{}
+    transportWithClient := rtclient.NewWithClient(novaHost, client.DefaultBasePath, transCfg.Schemes, httpCl)
+    transportWithClient.Transport = httpCl.Transport
+    transportWithClient.DefaultAuthentication = auth
+    eventsClient := client.New(transportWithClient, strfmt.Default).Events
 
-    // Set up events client
-    var eventsClient events.ClientInterface
-    if customClient != nil {
-        eventsClient = customClient
-    } else {
-        // Create log-input client
-        transCfg := client.DefaultTransportConfig()
-        auth := rtclient.BasicAuth(clientID, clientSecret)
-        httpCl := &http.Client{}
-        transportWithClient := rtclient.NewWithClient(novaHost, client.DefaultBasePath, transCfg.Schemes, httpCl)
-        transportWithClient.Transport = httpCl.Transport
-        transportWithClient.DefaultAuthentication = auth
-        eventsClient = client.New(transportWithClient, strfmt.Default).Events
-    }
+    // Return new logger
+    return NewNovaLogger(eventsClient, logger, clientID, clientSecret, novaHost)
+}
 
-
+//NewNovaLogger creates a new instance of the NovaLogger
+func NewNovaLogger(eventsClient events.ClientInterface, logger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
     // Return new logger
     return &NovaLogger{
         client:     eventsClient,
-        SendInterval: 2000,
+        SendInterval: DefaultFlushInterval,
+        SendToStdOut: false,
         clientID: clientID,
         clientSecret: clientSecret,
         logrusLogger: logger,
@@ -76,9 +70,14 @@ func NewNovaLogger(customClient events.ClientInterface, customLogger *logrus.Log
     }
 }
 
-//Start kicks off the logger to feed data off to log-input as available
+//Start kicks off the logger to feed data off to nova as available
 func (nl *NovaLogger) Start() {
-    //This configures the logger to call the logger's own writer function to send logs to log-input
+    if nl.isRunning {
+        return
+    }
+
+    nl.isRunning = true
+    nl.isStopped = false
     nl.logrusLogger.Out = nl
     nl.logrusLogger.Formatter = &logrus.JSONFormatter{}
     // Begin the formatting process
@@ -86,10 +85,22 @@ func (nl *NovaLogger) Start() {
     return
 }
 
+//Stop ends the logging
+func (nl *NovaLogger) Stop() {
+    if !nl.isRunning {
+        return
+    }
+    nl.isStopped = true
+    close(nl.inStream)
+}
+
 //Write sends all writes to the input channel
 func (nl *NovaLogger) Write(p []byte) (n int, err error) {
     go nl.writeLogsToChannel(string(p))
-    fmt.Println(string(p))
+    if nl.SendToStdOut {
+        //Tee to stdout
+        fmt.Println(string(p))
+    }
     return len(p), nil
 }
 
@@ -109,7 +120,11 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
     go func() {
         for {
             select {
-            case log := <-in:
+            case log, ok := <-in:
+                //Break when channel is closed
+                if !ok {
+                    break
+                }
                 //Marshal the data out to iterate over and set on the event
                 logMap := make(map[string]interface{})
                 err := json.Unmarshal([]byte(log), &logMap)
@@ -118,18 +133,24 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
                 }
 
                 event := models.Event{
-                    Event: map[string]*string{
-                        "raw": &log,
+                    Event: map[string]string{
+                        "raw": log,
                     },
                 }
                 for k, v := range logMap {
                     stringVal := fmt.Sprintf("%s", v)
-                    event.Event[k] = &stringVal
+                    event.Event[k] = stringVal
                 }
 
                 //Block and insert a new event
                 lock.Lock()
-                out = append(out, &event)
+                if len(out) == MaxBufferSize {
+                    //Shift and drop oldest event
+                    fmt.Printf("Dropping event: %s\n", out[0].Event["raw"])
+                    out = append(out[1:], &event)
+                } else {
+                    out = append(out, &event)
+                }
                 lock.Unlock()
             }
         }
@@ -137,9 +158,9 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
     return &out, lock
 }
 
-//Flush logs to the log-input endpoint
+//Flush logs to the nova endpoint
 func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mutex) {
-    for {
+    for !nl.isStopped {
         time.Sleep(time.Duration(nl.SendInterval) * time.Millisecond)
         retryBackoff := backoff.NewExponentialBackOff()
         auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
@@ -154,26 +175,28 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                 *out = make([]*models.Event, 0)
                 lock.Unlock()
 
-                //Iterate over to push events into log-input
-                for _, event := range tmp {
-                    ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-                    defer cancel()
-                    params := &events.EventsParams{
-                        Events:  models.Events{event},
-                        Context: ctx,
-                    }
+                //Push events to nova
+                ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+                defer cancel()
+                params := &events.EventsParams{
+                    Events:  models.Events(tmp),
+                    Context: ctx,
+                }
 
-                    //Setup retry func
-                    operation := func() error {
-                        _, err := nl.client.Events(params, auth)
-                        return err
-                    }
+                //Setup retry func
+                operation := func() error {
+                    _, err := nl.client.Events(params, auth)
+                    return err
+                }
 
-                    //If retry with backoff fails, then send the error to stdout
-                    err := backoff.Retry(operation, retryBackoff)
-                    if err != nil {
-                        fmt.Printf("Error sending to log-store: %v\n", err)
-                    }
+                //If retry with backoff fails, then send the error to stdout
+                err := backoff.Retry(operation, retryBackoff)
+                if err != nil {
+                    fmt.Printf("Error sending to log-store: %v\n", err)
+                    //Push events back onto the output array
+                    lock.Lock()
+                    *out = append(*out, tmp...)
+                    lock.Unlock()
                 }
             }()
         }

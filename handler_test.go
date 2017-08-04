@@ -36,6 +36,7 @@ var _ = Describe("Log4Nova Handler", func() {
         request, _ := http.NewRequest("GET", "http://example.com/foo", nil)
         logger := logrus.New()
         entry := logrus.NewEntry(logger)
+        mockLogger.EXPECT().Start().Times(1)
         mockLogger.EXPECT().WithFields(gomock.Any()).Return(entry).Times(1)
         handler.ServeHTTP(recorder, request)
         Expect(recorder.Code).To(Equal(200))

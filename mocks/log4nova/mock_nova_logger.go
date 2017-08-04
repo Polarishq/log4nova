@@ -170,6 +170,16 @@ func (_mr *MockINovaLoggerMockRecorder) Start() *gomock.Call {
 	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Start", reflect.TypeOf((*MockINovaLogger)(nil).Start))
 }
 
+// Stop mocks base method
+func (_m *MockINovaLogger) Stop() {
+	_m.ctrl.Call(_m, "Stop")
+}
+
+// Stop indicates an expected call of Stop
+func (_mr *MockINovaLoggerMockRecorder) Stop() *gomock.Call {
+	return _mr.mock.ctrl.RecordCallWithMethodType(_mr.mock, "Stop", reflect.TypeOf((*MockINovaLogger)(nil).Stop))
+}
+
 // Warning mocks base method
 func (_m *MockINovaLogger) Warning(_param0 ...interface{}) {
 	_s := []interface{}{}

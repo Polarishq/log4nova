@@ -22,6 +22,7 @@ func NewNovaHandler (handler http.Handler, logger INovaLogger) *NovaHandler {
 }
 
 func (nl *NovaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    nl.logger.Start()
     // Get the start time
     startTime := time.Now()
 
