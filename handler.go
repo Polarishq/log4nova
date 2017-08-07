@@ -14,7 +14,7 @@ type NovaHandler struct {
 }
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
-func NewNovaHandler (handler http.Handler, logger INovaLogger) *NovaHandler {
+func NewNovaHandler (logger INovaLogger, handler http.Handler) *NovaHandler {
     return &NovaHandler{
         handler: handler,
         logger: logger,

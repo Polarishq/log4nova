@@ -166,7 +166,6 @@ func (nl *NovaLogger) formatLogs(in <-chan string) (*[]*models.Event, sync.Mutex
 func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mutex) {
     for !nl.isStopped {
         time.Sleep(time.Duration(nl.SendInterval) * time.Millisecond)
-        retryBackoff := backoff.NewExponentialBackOff()
         auth := rtclient.BasicAuth(nl.clientID, nl.clientSecret)
 
         //If we have logs, spawn a new thread to flush logs out
@@ -181,6 +180,9 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
 
                 //Push events to nova
                 ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+                retryBackoff := backoff.NewExponentialBackOff()
+
+                bckoffCtx := backoff.WithContext(retryBackoff, ctx)
                 defer cancel()
                 params := &events.EventsParams{
                     Events:  models.Events(tmp),
@@ -194,7 +196,7 @@ func (nl *NovaLogger) flushFromOutputChannel(out *[]*models.Event, lock sync.Mut
                 }
 
                 //If retry with backoff fails, then send the error to stdout
-                err := backoff.Retry(operation, retryBackoff)
+                err := backoff.Retry(operation, bckoffCtx)
                 if err != nil {
                     fmt.Printf("Error sending to log-store: %v\n", err)
                     //Push events back onto the output array
