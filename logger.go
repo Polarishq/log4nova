@@ -37,27 +37,31 @@ type NovaLogger struct {
 }
 
 //NewNovaLoggerWithHost creates a Nova Logging instance with the default host
-func NewNovaLoggerWithHost(clientID, clientSecret string) *NovaLogger {
+func NewNovaLogger(clientID, clientSecret string) *NovaLogger {
     if clientID == "" || clientSecret == "" {
         panic(errors.New("Nova client ID or client secret not set properly"))
     }
 
     novaHost := client.DefaultHost
+    // Return new logger
+    return NewNovaLoggerWithHost(clientID, clientSecret, novaHost)
+}
+
+func NewNovaLoggerWithHost(clientID, clientSecret, host string) *NovaLogger {
     logger := logrus.New()
     transCfg := client.DefaultTransportConfig()
     auth := rtclient.BasicAuth(clientID, clientSecret)
     httpCl := &http.Client{}
-    transportWithClient := rtclient.NewWithClient(novaHost, client.DefaultBasePath, transCfg.Schemes, httpCl)
+    transportWithClient := rtclient.NewWithClient(host, client.DefaultBasePath, transCfg.Schemes, httpCl)
     transportWithClient.Transport = httpCl.Transport
     transportWithClient.DefaultAuthentication = auth
     eventsClient := client.New(transportWithClient, strfmt.Default).Events
+    return NewNovaLoggerWithCustom(eventsClient, logger, clientID, clientSecret, host)
 
-    // Return new logger
-    return NewNovaLogger(eventsClient, logger, clientID, clientSecret, novaHost)
 }
 
 //NewNovaLogger creates a new instance of the NovaLogger
-func NewNovaLogger(eventsClient events.ClientInterface, logger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
+func NewNovaLoggerWithCustom(eventsClient events.ClientInterface, logger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
     // Return new logger
     return &NovaLogger{
         client:     eventsClient,
