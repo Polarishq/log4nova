@@ -3,7 +3,11 @@ A simple logging library for forwarding your logs into your Nova log store
 
 ##Setting up Log4Nova
 1. Vendor this library into your go-service
-2. Wire up the NovaHandler to your middleware chain with your Nova API Keys:
+2. Vendor in the dependencies:
+```
+$ make dependencies
+``` 
+3. Wire up the NovaHandler to your middleware chain with your Nova API Keys:
 ```
 //Example for standing up the log4nova handler
 func setupGlobalMiddleware(handler http.Handler) http.Handler {
