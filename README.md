@@ -1,7 +1,7 @@
-#Log4Nova
+# Log4Nova
 A simple logging library for forwarding your logs into your Nova log store
 
-##Setting up Log4Nova
+## Setting up Log4Nova
 1. Vendor this library into your go-service
 2. Vendor in the dependencies:
 ```
@@ -19,7 +19,7 @@ func setupGlobalMiddleware(handler http.Handler) http.Handler {
 }
 ``` 
 
-##Usage
+## Usage
 To log any data to your splunk instance, first initialize a log4nova instance:
 ```
 	clientID := os.Getenv("NOVA_CLIENT_ID")
@@ -45,5 +45,5 @@ To log any data to your splunk instance, first initialize a log4nova instance:
 
 ```
 
-##Troubleshooting
+## Troubleshooting
 TBD
