@@ -4,8 +4,8 @@ import (
     "github.com/golang/mock/gomock"
     . "github.com/onsi/ginkgo"
     . "github.com/onsi/gomega"
-    "github.com/Polarishq/log4nova/mocks/log4nova"
-    "github.com/Polarishq/log4nova"
+    "github.com/splunknova/log4nova/mocks/log4nova"
+    "github.com/splunknova/log4nova"
     "net/http"
     "net/http/httptest"
     "github.com/sirupsen/logrus"
@@ -28,7 +28,7 @@ var _ = Describe("Log4Nova Handler", func() {
             w.WriteHeader(200)
             w.Write([]byte("bar"))
         })
-        handler = log4nova.NewNovaHandler(testHandler, mockLogger)
+        handler = log4nova.NewNovaHandler(mockLogger, testHandler)
         recorder = httptest.NewRecorder()
     })
 

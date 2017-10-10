@@ -4,10 +4,10 @@ import (
     "github.com/golang/mock/gomock"
     . "github.com/onsi/ginkgo"
     //. "github.com/onsi/gomega"
-    "github.com/Polarishq/log4nova"
+    "github.com/splunknova/log4nova"
     "net/http/httptest"
     "github.com/sirupsen/logrus"
-    "github.com/Polarishq/log4nova/mocks/logface-sdk-go/client/events"
+    "github.com/splunknova/log4nova/mocks/logface-sdk-go/client/events"
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/sirupsen/logrus/hooks/test"
     "github.com/Polarishq/logface-sdk-go/client/events"
@@ -34,7 +34,7 @@ var _ = Describe("Log4Nova Logger", func() {
         clientID = "clientID"
         clientSecret = "clientSecret"
         host = "testhost"
-        logger = log4nova.NewNovaLogger(mockEventsClient, testLogger, clientID, clientSecret, host)
+        logger = log4nova.NewNovaLoggerWithCustom(mockEventsClient, testLogger, clientID, clientSecret, host)
         recorder = httptest.NewRecorder()
     })
 
