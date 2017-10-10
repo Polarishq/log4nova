@@ -3,7 +3,6 @@ package log4nova
 import (
     "net/http"
     "time"
-    "fmt"
     "github.com/satori/go.uuid"
     "strconv"
 )
@@ -29,14 +28,15 @@ func (nl *NovaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     // Capture the response data
     lwr := loggingResponseWriter{w: w, captureBody: false}
     nl.handler.ServeHTTP(&lwr, r)
+
     endTime := time.Now()
     uuid_evt := uuid.NewV1()
-    fmt.Println(uuid_evt)
+
     //Send to log4nova
     nl.logger.WithFields(Fields{
-        "api": r.URL.Path,
+        "path": r.URL.Path,
         "statusCode": strconv.Itoa(lwr.code),
-        "requestURL" : r.RequestURI,
+        "requestURI" : r.RequestURI,
         "requestMethod": r.Method,
         "userAgent": r.UserAgent(),
         "logId": uuid_evt,

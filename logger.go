@@ -9,7 +9,6 @@ import (
     rtclient "github.com/go-openapi/runtime/client"
     "github.com/go-openapi/strfmt"
     "github.com/cenkalti/backoff"
-    "errors"
     "fmt"
     "encoding/json"
     "sync"
@@ -37,17 +36,13 @@ type NovaLogger struct {
 }
 
 //NewNovaLoggerWithHost creates a Nova Logging instance with the default host
-func NewNovaLogger(clientID, clientSecret string) *NovaLogger {
-    if clientID == "" || clientSecret == "" {
-        panic(errors.New("Nova client ID or client secret not set properly"))
-    }
-
+func NewNovaLogger(clientID, clientSecret string) (*NovaLogger, error) {
     novaHost := client.DefaultHost
     // Return new logger
     return NewNovaLoggerWithHost(clientID, clientSecret, novaHost)
 }
 
-func NewNovaLoggerWithHost(clientID, clientSecret, host string) *NovaLogger {
+func NewNovaLoggerWithHost(clientID, clientSecret, host string) (*NovaLogger, error) {
     logger := logrus.New()
     transCfg := client.DefaultTransportConfig()
     auth := rtclient.BasicAuth(clientID, clientSecret)
@@ -61,7 +56,21 @@ func NewNovaLoggerWithHost(clientID, clientSecret, host string) *NovaLogger {
 }
 
 //NewNovaLogger creates a new instance of the NovaLogger
-func NewNovaLoggerWithCustom(eventsClient events.ClientInterface, logger *logrus.Logger, clientID, clientSecret, host string) *NovaLogger {
+func NewNovaLoggerWithCustom(eventsClient events.ClientInterface, logger *logrus.Logger,
+    clientID, clientSecret, host string) (*NovaLogger, error) {
+
+    if clientID == "" {
+        return nil, fmt.Errorf("clientID cannot be empty")
+    }
+
+    if clientSecret == "" {
+        return nil, fmt.Errorf("clientSecret cannot be empty")
+    }
+
+    if host == "" {
+        return nil, fmt.Errorf("host cannot be empty")
+    }
+
     // Return new logger
     return &NovaLogger{
         client:     eventsClient,
@@ -71,7 +80,7 @@ func NewNovaLoggerWithCustom(eventsClient events.ClientInterface, logger *logrus
         clientSecret: clientSecret,
         logrusLogger: logger,
         inStream: make(chan string),
-    }
+    }, nil
 }
 
 //Start kicks off the logger to feed data off to nova as available

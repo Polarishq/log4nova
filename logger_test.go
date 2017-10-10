@@ -3,7 +3,7 @@ package log4nova_test
 import (
     "github.com/golang/mock/gomock"
     . "github.com/onsi/ginkgo"
-    //. "github.com/onsi/gomega"
+    . "github.com/onsi/gomega"
     "github.com/splunknova/log4nova"
     "net/http/httptest"
     "github.com/sirupsen/logrus"
@@ -34,7 +34,7 @@ var _ = Describe("Log4Nova Logger", func() {
         clientID = "clientID"
         clientSecret = "clientSecret"
         host = "testhost"
-        logger = log4nova.NewNovaLoggerWithCustom(mockEventsClient, testLogger, clientID, clientSecret, host)
+        logger, _ = log4nova.NewNovaLoggerWithCustom(mockEventsClient, testLogger, clientID, clientSecret, host)
         recorder = httptest.NewRecorder()
     })
 
@@ -51,5 +51,23 @@ var _ = Describe("Log4Nova Logger", func() {
         eok := events.EventsOK{Payload: &ret}
 
         mockEventsClient.EXPECT().Events(testEventParams, auth).Return(&eok, nil).Times(1)
+    })
+
+    Describe("Validation should fail", func() {
+        It("on empty client id", func() {
+            logger, err := log4nova.NewNovaLogger("", "notempty")
+            Expect(err).Should(HaveOccurred())
+            Expect(logger).To(BeNil())
+        })
+        It("on empty secret", func() {
+            logger, err := log4nova.NewNovaLogger("notempty", "")
+            Expect(err).Should(HaveOccurred())
+            Expect(logger).To(BeNil())
+        })
+        It("on empty host", func() {
+            logger, err := log4nova.NewNovaLoggerWithHost("notempty", "notempty", "")
+            Expect(err).Should(HaveOccurred())
+            Expect(logger).To(BeNil())
+        })
     })
 })
