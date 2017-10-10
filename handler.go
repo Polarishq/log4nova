@@ -14,6 +14,7 @@ type NovaHandler struct {
 
 //NewNovaHandler creates a new instance of the Nova Logging Handler
 func NewNovaHandler (logger INovaLogger, handler http.Handler) *NovaHandler {
+    logger.Start()
     return &NovaHandler{
         handler: handler,
         logger: logger,
@@ -21,7 +22,6 @@ func NewNovaHandler (logger INovaLogger, handler http.Handler) *NovaHandler {
 }
 
 func (nl *NovaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-    nl.logger.Start()
     // Get the start time
     startTime := time.Now()
 
@@ -30,7 +30,6 @@ func (nl *NovaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     nl.handler.ServeHTTP(&lwr, r)
 
     endTime := time.Now()
-    uuid_evt := uuid.NewV1()
 
     //Send to log4nova
     nl.logger.WithFields(Fields{
@@ -39,7 +38,7 @@ func (nl *NovaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         "requestURI" : r.RequestURI,
         "requestMethod": r.Method,
         "userAgent": r.UserAgent(),
-        "logId": uuid_evt,
+        "logId": uuid.NewV1(),
         "responseTime": endTime.Sub(startTime).String(),
     }).Infof("Logging Response")
 }
